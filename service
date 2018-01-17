@@ -1,0 +1,52 @@
+#!/bin/bash -eux
+
+[ -s config.json ] || cat turnout/config.json > conf/config.json
+[ -s rules.json ] || cat turnout/rules.json > conf/rules.json
+chown $CHINACHU_UID conf/*.json data/*.json || :
+
+usermod -u $CHINACHU_UID chinachu
+chown chinachu. -R .
+
+VIDEO_GID=`ls -n $VAAPI_DEVICE | cut -d' ' -f4 || :`
+if ${VAAPI_ENABLED:=false}; then
+  if [ "$VIDEO_GID" = "" ]; then
+    echo 'ERROR: VA-API is enabled, but VA-API device was not found'
+    exit 1
+  else
+    groupmod -g $VIDEO_GID video
+  fi
+fi
+
+cat config.json \
+  | jq ".vaapiEnabled = $VAAPI_ENABLED \
+    | .vaapiDevice = \"$VAAPI_DEVICE\"" > config.json_
+cat config.json_ > config.json
+rm config.json_
+
+find $RECORDED_DIR -name '*.tmp.mp4' -exec \
+  sh -c 'tmp={} && raw=${tmp%.tmp.mp4}.m2ts && recorded_command $raw' \; &
+
+rm -f /var/run/chinachu-operator.pid
+rm -f /var/run/chinachu-wui.pid
+
+retry_limit=300
+n_retries=0
+while [ $n_retries -le $retry_limit ]
+do
+  http_status=`curl -s mirakurun:40772/api/status -o /dev/null -w '%{http_code}'; :`
+  if [ "$http_status" = "200" ]; then
+    n_retries=0
+    echo "succeeded in connecting with mirakurun"
+    break
+  fi
+  n_retries=$(($n_retries + 1))
+  echo "waiting for mirakurun...(${n_retries}sec)"
+  sleep 1
+done
+
+[ $n_retries -ge $retry_limit ] && echo "mirakurun timed out"
+
+/etc/init.d/chinachu-operator start
+/etc/init.d/chinachu-wui start
+
+tail -f /dev/null
