@@ -1,4 +1,4 @@
-FROM gliderlabs/alpine:edge
+FROM ogomez/arm32v7-alpine:latest
 
 LABEL maintainer='kappabull <kappabull@gmail.com>'
 
@@ -29,7 +29,7 @@ RUN set -eux && \
       shadow \
       \
       libva \
-      libva-intel-driver \
+      #libva-intel-driver \ no arm32v7 Support
       zlib-dev \
       yasm-dev \
       lame-dev \
@@ -81,6 +81,7 @@ RUN set -eux && \
     ./chinachu service wui initscript | sed -e "s/^USER=.*$/USER=chinachu/" > /etc/init.d/chinachu-wui && \
     chmod +x /etc/init.d/* && \
     \
+    # FFMPGEG Add
     rm -rf usr/bin/* usr/src/* && \
     git clone $FFMPEG_REPOSITORY ffmpeg && \
     cd ffmpeg && \
