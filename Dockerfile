@@ -2,118 +2,73 @@ FROM ogomez/arm32v7-alpine:latest
 
 LABEL maintainer='kappabull <kappabull@gmail.com>'
 
-ARG CHINACHU_REPOSITORY='https://github.com/amaya382/Chinachu.git'
-ARG CHINACHU_COMMIT='da111488d7cc54b5c5fc4d32cae8e91d9c39ffab'
-ARG FFMPEG_REPOSITORY='https://github.com/FFmpeg/FFmpeg.git'
-ARG FFMPEG_COMMIT='27ebdcf079ed54d294db010e9f50700f75ed5e3d'
+ENV DOCKER="YES"
+ARG REPOSITORY="git://github.com/Chinachu/Chinachu.git"
+ARG BRANCH="gamma"
 
-ENV CHINACHU_UID=1000
-ENV CHINACHU_HOME='/usr/local/chinachu'
-ENV SCRIPT_DIR='/usr/local/bin'
-ENV RECORDED_DIR="$CHINACHU_HOME/recorded"
-ENV DUMP_SITE="$RECORDED_DIR/dump"
+ARG WORK_DIR="/usr/local/chinachu"
+ARG USER_NAME="chinachu"
+ARG USER_ID="1000"
 
-WORKDIR $CHINACHU_HOME
+RUN set -x \
+	&& apk upgrade --update \
+	&& apk add \
+		bash \
+		'nodejs>=6.2.0' \
+		nodejs-npm \
+		coreutils \
+		curl \
+		procps \
+		ca-certificates \
+	\
+	&& apk add --virtual .build-deps \
+		git \
+		make \
+		gcc \
+		g++ \
+		autoconf \
+		automake \
+		wget \
+		curl \
+		sudo \
+		tar \
+		xz \
+		libc-dev \
+		musl-dev \
+		eudev-dev \
+		libevent-dev \
+	\
+	&& adduser -D -u ${USER_ID} -h ${WORK_DIR} ${USER_NAME} \
+	&& mkdir -p ${WORK_DIR} \
+	&& git clone ${REPOSITORY} ${WORK_DIR} \
+	&& chown -R ${USER_NAME} ${WORK_DIR} \
+	&& cd ${WORK_DIR} \
+	&& git checkout ${BRANCH} \
+	&& echo 1 | sudo -u ${USER_NAME} ./chinachu installer \
+	&& ./chinachu service operator  initscript | sudo -u ${USER_NAME} tee /tmp/chinachu-operator \
+	&& ./chinachu service wui initscript | sudo -u ${USER_NAME} tee /tmp/chinachu-wui \
+	&& sudo -u ${USER_NAME} mkdir log \
+	\
+	#&& chown root. /tmp/chinachu-operator /tmp/chinachu-wui \
+	&& chmod u+x /tmp/chinachu-operator /tmp/chinachu-wui \
+	&& mv /tmp/chinachu-operator /etc/init.d/ \
+	&& mv /tmp/chinachu-wui /etc/init.d/ \
+	\
+	# cleaning
+	&& cd / \
+	&& npm cache clean \
+	&& apk del --purge .build-deps \
+	&& rm -rf /tmp/* \
+	&& rm -rf /var/cache/apk/*
 
-COPY service $SCRIPT_DIR
+	# forward request and error logs to docker log collector
+	#&& ln -sf /dev/stdout ${WORK_DIR}/log/operator \
+	#&& ln -sf /dev/stdout ${WORK_DIR}/log/scheduler \
+	#&& ln -sf /dev/stdout ${WORK_DIR}/log/wui
 
-RUN set -eux && \
-    apk add --update --no-cache \
-      bash \
-      curl \
-      nodejs \
-      coreutils \
-      procps \
-      ca-certificates \
-      jq \
-      shadow \
-      \
-      libva \
-      #libva-intel-driver \ no arm32v7 Support
-      zlib-dev \
-      yasm-dev \
-      lame-dev \
-      libva-dev \
-      libogg-dev \
-      libvpx-dev \
-      libvorbis-dev \
-      x264-dev \
-      x265-dev \
-      freetype-dev \
-      libass-dev \
-      libwebp-dev \
-      rtmpdump-dev \
-      libtheora-dev \
-      opus-dev && \
-    apk add --update --no-cache --virtual .build-deps \
-      build-base \
-      git \
-      autoconf \
-      automake \
-      xz \
-      musl-dev \
-      eudev-dev \
-      libevent-dev \
-      nasm \
-      bzip2 && \
-    rm /bin/su && \
-    ln -s /bin/busybox /bin/su && \
-    adduser -D -u $CHINACHU_UID -h $CHINACHU_HOME chinachu && \
-    addgroup chinachu video && \
-    git clone $CHINACHU_REPOSITORY $CHINACHU_HOME && \
-    git checkout $CHINACHU_COMMIT && \
-    echo 1 | ./chinachu installer && \
-    mkdir turnout conf && \
-    cat config.sample.json | \
-      jq ".uid = \"chinachu\" \
-        | .mirakurunPath = \"http://mirakurun:40772/\" \
-        | .recordedDir = \"$RECORDED_DIR/\" \
-        | .storageLowSpaceAction = \"none\" \
-        | .storageLowSpaceCommand = \"$SCRIPT_DIR/storage_low_space_command\" \
-        | .recordedCommand = \"$SCRIPT_DIR/recorded_command\"" \
-      > turnout/config.json && \
-    echo [] > turnout/rules.json && \
-    ln -s conf/config.json config.json && \
-    ln -s conf/rules.json rules.json && \
-    rm *.sample.json && \
-    chown chinachu. -R $CHINACHU_HOME && \
-    ./chinachu service operator initscript | sed -e "s/^USER=.*$/USER=chinachu/" > /etc/init.d/chinachu-operator && \
-    ./chinachu service wui initscript | sed -e "s/^USER=.*$/USER=chinachu/" > /etc/init.d/chinachu-wui && \
-    chmod +x /etc/init.d/* && \
-    \
-    # FFMPGEG Add
-    rm -rf usr/bin/* usr/src/* && \
-    git clone $FFMPEG_REPOSITORY ffmpeg && \
-    cd ffmpeg && \
-    git checkout $FFMPEG_COMMIT && \
-    ./configure \
-      --enable-version3 \
-      --enable-gpl \
-      --enable-nonfree \
-      --enable-small \
-      --enable-libmp3lame \
-      --enable-libx264 \
-      --enable-libx265 \
-      --enable-libvpx \
-      --enable-libtheora \
-      --enable-libvorbis \
-      --enable-libopus \
-      --enable-libass \
-      --enable-libwebp \
-      --enable-librtmp \
-      --enable-postproc \
-      --enable-avresample \
-      --enable-libfreetype \
-      --disable-debug \
-      --disable-doc && \
-    make && \
-    make install && \
-    cd .. && \
-    \
-    apk del --purge .build-deps && \
-    rm -rf ffmpeg .git ~/.npm
-    RUN chmod +x $SCRIPT_DIR/service
+COPY services.sh /usr/local/bin
+COPY config.sample.json ${WORK_DIR}
 
-EXPOSE 20772
-
-CMD ["service"]
+WORKDIR ${WORK_DIR}
+CMD ["/usr/local/bin/services.sh"]
+EXPOSE 10772 20772 5353
