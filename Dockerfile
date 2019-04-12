@@ -1,6 +1,6 @@
 FROM ogomez/arm32v7-alpine:latest
 
-LABEL maintainer='kappabull <kappabull@gmail.com>'
+LABEL maintainer='kappabull <kappa8v11@gmail.com>'
 
 ENV DOCKER="YES"
 ARG REPOSITORY="git://github.com/Chinachu/Chinachu.git"
